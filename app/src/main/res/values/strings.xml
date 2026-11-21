@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Laya</string>
+    <string name="app_name">PurpleLaya</string>
     <string name="playback_channel_name">Now playing</string>
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_description">Songs being saved to your Music folder</string>
@@ -29,14 +29,14 @@
     <string name="downloads">Downloads</string>
     <string name="downloaded_songs">Downloaded songs</string>
     <string name="local_music">Local Music</string>
-    <string name="search_source_youtube" translatable="false">YouTube</string>
+    <string name="search_source_youtube" translatable="false">PurpleMusic</string>
     <string name="search_source_addons">Addons</string>
     <string name="search_addons_none">No addons are enabled. Add one in Settings → Sources.</string>
     <string name="audio_files_on_device">Audio files on device</string>
     <string name="on_device">On Device</string>
     <string name="playlists">Playlists</string>
     <string name="new_playlist">New playlist</string>
-    <string name="saved_to_youtube_music">Saved to YouTube Music</string>
+    <string name="saved_to_youtube_music">Saved to PurpleMusic</string>
     <string name="sign_in">Sign in</string>
     <string name="sign_out">Sign out</string>
     <string name="signed_in">Signed in</string>
@@ -154,7 +154,7 @@
     <string name="open_releases_page">Open Releases Page</string>
     <string name="whats_new">What’s new</string>
     <string name="log_copied">Log copied · %1$d lines</string>
-    <string name="sign_in_youtube_music">Sign in to YouTube Music</string>
+    <string name="sign_in_youtube_music">Connect to PurpleMusic</string>
     <string name="choose_a_channel">Choose a channel</string>
     <string name="channel_session_unavailable">No session on this page yet — open YouTube Music first</string>
     <string name="channel_switch_instructions">Switch with the avatar, then tap Use this channel</string>
@@ -505,7 +505,7 @@
     <string name="wifi_only_download_refusal">Downloads are limited to Wi-Fi. Turn that off in Settings to use mobile data.</string>
     <string name="pinned_playlist_limit">Only %1$d playlists can be pinned</string>
     <string name="downloaded_playlist">Downloaded playlist</string>
-    <string name="library_sign_in_description">Sign in to your Google account to see your liked songs, playlists, and YouTube Music history.</string>
+    <string name="library_sign_in_description">Connect to your PurpleMusic server to see your liked songs, playlists, mixes, and recommendations.</string>
     <string name="downloads_progress">Downloads · %1$d%%</string>
     <string name="downloads_finished">Downloads · finished</string>
     <string name="downloading_progress">Downloading · %1$d%%</string>
@@ -513,10 +513,10 @@
     <string name="start_radio">Start radio</string>
     <string name="shared_link">Shared link</string>
     <string name="radio_started">%1$s radio started</string>
-    <string name="saved_to_laya_folder">Saved to Music/Laya</string>
+    <string name="saved_to_laya_folder">Saved to Music/PurpleLaya</string>
     <string name="nothing_downloading">Nothing downloading</string>
     <string name="nothing_to_explore">Nothing to explore right now</string>
-    <string name="no_youtube_music_results">No results from YouTube Music</string>
+    <string name="no_youtube_music_results">No results from PurpleMusic</string>
     <string name="library_empty">Nothing in your library yet</string>
     <string name="history_sign_in_required">Sign in to see what you have been listening to</string>
     <string name="history_empty">Nothing played yet</string>
@@ -524,7 +524,7 @@
     <string name="downloaded_playlist_empty">Nothing from this playlist remains on this device</string>
     <string name="no_local_audio_found">No audio files found on this device</string>
     <string name="no_internet_connection">No internet connection</string>
-    <string name="youtube_request_rejected">YouTube Music rejected the request. Try signing in again.</string>
+    <string name="youtube_request_rejected">PurpleMusic server rejected the request. Check your credentials.</string>
     <string name="something_went_wrong">Something went wrong</string>
     <string name="unknown_artist">Unknown artist</string>
     <plurals name="downloads_failed_count">
@@ -861,8 +861,8 @@
     <string name="swipe_plays_next">Swiping a song plays it next</string>
     <string name="swipe_adds_to_queue">When disabled, swiping adds the song to the end of the queue</string>
     <string name="import_backup_warning">This replaces this device’s settings and listening history with the contents of the file. Export the current data first if you want to keep it.</string>
-    <string name="youtube_music_account">YouTube Music account</string>
-    <string name="tap_to_sign_in_google">Tap to sign in with Google</string>
+    <string name="youtube_music_account">PurpleMusic account</string>
+    <string name="tap_to_sign_in_google">Tap to connect to PurpleMusic</string>
     <string name="export_succeeded">Exported settings and %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="import_succeeded">Imported %1$s from v%2$s</string>
@@ -895,8 +895,8 @@
     <string name="current_profile">Current profile</string>
     <string name="selected_account">Selected account</string>
     <string name="listen_as">Listen as</string>
-    <string name="default_youtube_profile">YouTube Music default profile</string>
-    <string name="account_profiles_help">A Google account can have Personal and Brand profiles. Each has its own library, likes and history.</string>
+    <string name="default_youtube_profile">PurpleMusic default profile</string>
+    <string name="account_profiles_help">You can connect multiple PurpleMusic servers or accounts and switch between them at any time.</string>
     <string name="choose_profile">Choose a profile</string>
     <string name="use_this_profile">Use this profile</string>
     <string name="switch_profile_hint">Switch using the avatar, then use this profile.</string>
@@ -1174,14 +1174,14 @@
     <string name="spotify_import_language_preference" translatable="false">Language preference</string>
     <string name="spotify_import_language_hint" translatable="false">e.g. Punjabi, Marathi, Korean…</string>
     <string name="spotify_library_subtitle">Your Spotify playlists</string>
-    <string name="onboarding_title">Millions of songs, stream on Laya</string>
+    <string name="onboarding_title">Your self-hosted music, on PurpleLaya</string>
     <string name="onboarding_name_prompt">What should we call you?</string>
     <string name="onboarding_name_hint">Your name</string>
     <string name="onboarding_name_footer">Friends see this when you Listen Together. You can change it later in Settings.</string>
     <string name="onboarding_next">Next</string>
-    <string name="onboarding_connect_title">Connect your YouTube account</string>
-    <string name="onboarding_connect_body">Bring your library, playlists and mixes with you, and start a Listen Together party with friends.</string>
-    <string name="onboarding_sign_in_google">Sign in with Google</string>
+    <string name="onboarding_connect_title">Connect your PurpleMusic server</string>
+    <string name="onboarding_connect_body">Enter your PurpleMusic server URL and sign in to access your library, playlists, daily mixes, and synced lyrics.</string>
+    <string name="onboarding_sign_in_google">Connect to PurpleMusic</string>
     <string name="onboarding_skip_sign_in">Skip sign in</string>
     <string name="onboarding_back">Back</string>
     <string name="song_info">Song Info</string>

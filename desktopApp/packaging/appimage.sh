@@ -10,12 +10,12 @@ APP_DIR_SRC=${1:?usage: appimage.sh <app-image-dir> <out.AppImage> [appimagetool
 OUT=${2:?usage: appimage.sh <app-image-dir> <out.AppImage> [appimagetool]}
 TOOL=${3:-appimagetool}
 
-[ -x "$APP_DIR_SRC/bin/Laya" ] || { echo "no launcher in $APP_DIR_SRC" >&2; exit 1; }
+[ -x "$APP_DIR_SRC/bin/PurpleLaya" ] || [ -x "$APP_DIR_SRC/bin/Laya" ] || { echo "no launcher in $APP_DIR_SRC" >&2; exit 1; }
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-APPDIR="$STAGE/Laya.AppDir"
+APPDIR="$STAGE/PurpleLaya.AppDir"
 
 mkdir -p "$APPDIR/usr"
 cp -a "$APP_DIR_SRC/." "$APPDIR/usr/"
@@ -24,17 +24,21 @@ cp -a "$APP_DIR_SRC/." "$APPDIR/usr/"
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/Laya" "$@"
+if [ -x "$HERE/usr/bin/PurpleLaya" ]; then
+  exec "$HERE/usr/bin/PurpleLaya" "$@"
+else
+  exec "$HERE/usr/bin/Laya" "$@"
+fi
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-cat > "$APPDIR/laya.desktop" <<'DESKTOP'
+cat > "$APPDIR/purplelaya.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Laya
+Name=PurpleLaya
 GenericName=Music Player
-Comment=Aesthetic YouTube Music client
-Exec=Laya
+Comment=Aesthetic PurpleMusic client
+Exec=PurpleLaya
 Icon=laya
 Categories=AudioVideo;Audio;Player;
 Terminal=false

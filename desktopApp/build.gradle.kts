@@ -675,10 +675,10 @@ compose.desktop {
                 TargetFormat.Deb,
                 TargetFormat.Rpm,
             )
-            packageName = "Laya"
+            packageName = "PurpleLaya"
             packageVersion = nativePackageVersion
-            description = if (targetOs == "windows") "Laya" else "Aesthetic YouTube Music client"
-            vendor = "Laya contributors"
+            description = if (targetOs == "windows") "PurpleLaya" else "PurpleMusic desktop client"
+            vendor = "PurpleLaya contributors"
             copyright = "Copyright © 2026 BitChord and Laya contributors"
 
             modules(

@@ -835,6 +835,7 @@ object AppSettings {
     fun init(settings: Settings, host: AppSettingsHost) {
         prefs = Prefs(settings)
         this.host = host
+        com.music.laya.data.purplemusic.PurpleMusicClient.attachSettings(settings)
         readAll()
     }
 

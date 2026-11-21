@@ -20,36 +20,42 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ManageAccounts
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.music.laya.data.purplemusic.PurpleMusicClient
 import com.music.laya.ui.icons.LayaIcons
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -62,7 +68,6 @@ internal fun DesktopAccountButton(
     onClick: () -> Unit,
 ) {
     Box(
-        // Rests at the toolbar buttons' hover wash and brightens a step when pointed at.
         Modifier.size(36.dp).clip(CircleShape)
             .desktopHoverWash(restAlpha = 0.12f, hoverAlpha = 0.2f)
             .clickable(onClick = onClick),
@@ -99,8 +104,7 @@ internal fun DesktopAccountButton(
 }
 
 /**
- * The account switcher: every login this app holds, the channels under each, and the actions that
- * change the set.
+ * The account switcher: every PurpleMusic login this app holds, and the actions that change the set.
  */
 @Composable
 internal fun DesktopAccountSelector(
@@ -115,8 +119,8 @@ internal fun DesktopAccountSelector(
     onDismiss: () -> Unit,
 ) {
     var managing by remember { mutableStateOf(false) }
+    val currentServer = PurpleMusicClient.serverUrl
     Box(Modifier.fillMaxSize()) {
-        // The scrim is its own layer rather than a modifier on the container.
         Box(
             Modifier
                 .fillMaxSize()
@@ -135,8 +139,6 @@ internal fun DesktopAccountSelector(
                 .widthIn(max = 380.dp)
                 .fillMaxWidth()
                 .clip(shape)
-                // The same frosted pane the floating bars are made of, sampling the page underneath
-                // rather than sitting on a flat fill.
                 .desktopBarGlass(shape),
         ) {
             Row(
@@ -144,7 +146,7 @@ internal fun DesktopAccountSelector(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (accounts.isEmpty()) "Accounts" else "Switch account",
+                    if (accounts.isEmpty()) "Serveur PurpleMusic" else "Comptes PurpleMusic",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
@@ -153,14 +155,37 @@ internal fun DesktopAccountSelector(
                 if (busy) CircularProgressIndicator(color = DesktopAccent, modifier = Modifier.size(16.dp))
             }
             LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                if (currentServer.isNotBlank()) {
+                    item(key = "current-server-banner") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Cloud,
+                                contentDescription = null,
+                                tint = Color(0xFFB388FF),
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                currentServer.removePrefix("https://").removePrefix("http://").trimEnd('/'),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFB388FF),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
                 if (accounts.isEmpty()) {
                     item {
                         Text(
-                            DesktopStrings[
-                                "d_nobody_is_signed_in",
-                                "Nobody is signed in. Your library, playlists and history need a " +
-                                    "YouTube Music account.",
-                            ],
+                            if (currentServer.isBlank()) {
+                                "Aucun serveur PurpleMusic configuré. Configurez l'URL de votre instance et connectez-vous."
+                            } else {
+                                "Non connecté. Connectez-vous pour synchroniser vos likes, playlists et recommandations."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = DesktopSecondary,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
@@ -170,7 +195,7 @@ internal fun DesktopAccountSelector(
                 accounts.forEach { account ->
                     item(key = "header-${account.accountId}") {
                         Text(
-                            account.email.ifBlank { account.name.ifBlank { "Account" } },
+                            account.email.ifBlank { account.name.ifBlank { "Serveur PurpleMusic" } },
                             style = MaterialTheme.typography.labelMedium,
                             color = DesktopSecondary,
                             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
@@ -188,15 +213,21 @@ internal fun DesktopAccountSelector(
                         )
                     }
                 }
-                item { DesktopSelectorAction(LayaIcons.Plus, "Add account", onAddAccount) }
+                item {
+                    DesktopSelectorAction(
+                        LayaIcons.Plus,
+                        if (accounts.isEmpty()) "Configurer / Se connecter" else "Changer de serveur / Ajouter un compte",
+                        onAddAccount,
+                    )
+                }
                 if (accounts.isNotEmpty()) {
                     item {
-                        DesktopSelectorAction(Icons.Rounded.ManageAccounts, "Manage accounts") {
+                        DesktopSelectorAction(Icons.Rounded.ManageAccounts, "Gérer les comptes") {
                             managing = !managing
                         }
                     }
                 }
-                item { DesktopSelectorAction(Icons.Rounded.Settings, "Settings", onOpenSettings) }
+                item { DesktopSelectorAction(Icons.Rounded.Settings, "Paramètres", onOpenSettings) }
                 item { Spacer(Modifier.height(10.dp)) }
             }
         }
@@ -230,7 +261,7 @@ private fun DesktopProfileRow(
             Icon(
                 Icons.Rounded.Person,
                 null,
-                tint = DesktopSecondary,
+                tint = Color(0xFFB388FF),
                 modifier = Modifier.size(38.dp),
             )
         }
@@ -238,7 +269,7 @@ private fun DesktopProfileRow(
         Column(Modifier.weight(1f)) {
             Text(profile.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                profile.handle.ifBlank { if (profile.isBrandAccount) "Brand account" else "Personal" },
+                profile.handle.ifBlank { if (profile.isBrandAccount) "Admin" else "PurpleMusic" },
                 style = MaterialTheme.typography.bodySmall,
                 color = DesktopSecondary,
                 maxLines = 1,
@@ -246,8 +277,8 @@ private fun DesktopProfileRow(
             )
         }
         when {
-            managing -> Text(DesktopStrings["sign_out", "Sign out"], color = DesktopDestructive, style = MaterialTheme.typography.labelMedium)
-            selected -> Icon(LayaIcons.Check, DesktopStrings["selected", "Selected"], tint = DesktopAccent, modifier = Modifier.size(20.dp))
+            managing -> Text("Déconnexion", color = DesktopDestructive, style = MaterialTheme.typography.labelMedium)
+            selected -> Icon(LayaIcons.Check, "Sélectionné", tint = DesktopAccent, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -272,208 +303,253 @@ private fun DesktopSelectorAction(
     }
 }
 
-/** What [DesktopSignInDialog]'s `busy` holds while the in-app sign-in window is open. */
-internal const val WEB_SIGN_IN = "Google"
+internal const val WEB_SIGN_IN = "PurpleMusic"
 
-/** Signing in: Google's own page in a Laya window, a browser to take the session from, or the cookie by hand. */
+/**
+ * PurpleMusic Server URL & Account Login / Registration dialog.
+ */
 @Composable
 internal fun DesktopSignInDialog(
-    /** Whether the in-app sign-in window can be shown; see [DesktopWebSignIn]. */
-    webSignIn: Boolean,
-    onWebSignIn: () -> Unit,
-    onImport: (DesktopBrowserCookies.Profile) -> Unit,
-    onPaste: (String) -> Unit,
-    busy: String?,
-    error: String?,
+    @Suppress("UNUSED_PARAMETER") webSignIn: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") onWebSignIn: () -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onImport: (DesktopBrowserCookies.Profile) -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onPaste: (String) -> Unit = {},
+    busy: String? = null,
+    error: String? = null,
     onDismiss: () -> Unit,
+    onPurpleSignedIn: () -> Unit = onDismiss,
 ) {
-    var profiles by remember { mutableStateOf<List<DesktopBrowserCookies.Profile>?>(null) }
-    var pasting by remember { mutableStateOf(false) }
-    var pasted by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) {
-        profiles = withContext(Dispatchers.IO) {
-            DesktopBrowserCookies.profiles().filterNot {
-                DesktopPlatform.isWindows && it.family == DesktopBrowserCookies.Family.CHROMIUM
-            }
-        }
+    val scope = rememberCoroutineScope()
+    var serverUrl by remember {
+        mutableStateOf(
+            PurpleMusicClient.serverUrl.ifBlank { DesktopAccounts.savedServerUrl() },
+        )
     }
+    var username by remember { mutableStateOf(PurpleMusicClient.username) }
+    var password by remember { mutableStateOf("") }
+    var isRegisterMode by remember { mutableStateOf(false) }
+    var localBusy by remember { mutableStateOf(false) }
+    var localError by remember { mutableStateOf<String?>(null) }
+    var localSuccess by remember { mutableStateOf<String?>(null) }
+
+    val effectiveBusy = localBusy || busy != null
+    val effectiveError = localError ?: error
+    val purpleAccent = Color(0xFFB388FF)
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedBorderColor = purpleAccent,
+        unfocusedBorderColor = Color.White.copy(alpha = 0.22f),
+        focusedLabelColor = purpleAccent,
+        unfocusedLabelColor = DesktopSecondary,
+        cursorColor = purpleAccent,
+    )
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                // Swallows clicks without dismissing: leaving now would cancel a sign-in that is
-                // still open, so only the close button does that.
+                .background(Color.Black.copy(alpha = 0.55f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = {},
                 ),
         )
-        val shape = RoundedCornerShape(20.dp)
+        val shape = RoundedCornerShape(22.dp)
         Column(
             Modifier
-                .widthIn(max = 520.dp)
+                .widthIn(max = 500.dp)
                 .fillMaxWidth()
                 .clip(shape)
                 .desktopBarGlass(shape)
-                .padding(bottom = 8.dp),
+                .padding(horizontal = 24.dp, vertical = 18.dp),
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 22.dp, end = 10.dp, top = 10.dp),
+                Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    Icons.Rounded.Cloud,
+                    contentDescription = null,
+                    tint = purpleAccent,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
-                    DesktopStrings["sign_in_youtube_music", "Sign in to YouTube Music"],
+                    "Connexion à PurpleMusic",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
-                    modifier = Modifier.weight(1f).padding(top = 10.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, DesktopStrings["close", "Close"], tint = DesktopSecondary)
+                    Icon(Icons.Rounded.Close, "Fermer", tint = DesktopSecondary)
                 }
             }
+
             Text(
-                if (webSignIn) {
-                    "Sign in with Google in a Laya window, then choose \"Use this profile\"."
-                } else {
-                    DesktopStrings[
-                        "d_google_signs_in_inside_a_browser",
-                        "Google signs in inside a browser and hands back a session. Pick a browser " +
-                            "here that is already signed in and Laya will use its session.",
-                    ]
-                },
+                "Indiquez l'URL du site hébergeant votre instance PurpleMusic, puis connectez-vous ou créez un compte.",
                 style = MaterialTheme.typography.bodySmall,
                 color = DesktopSecondary,
-                modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
             )
-            error?.let {
+
+            OutlinedTextField(
+                value = serverUrl,
+                onValueChange = {
+                    serverUrl = it
+                    localError = null
+                    localSuccess = null
+                },
+                label = { Text("URL du serveur PurpleMusic") },
+                placeholder = { Text("https://music.monsite.com ou http://localhost:51837", color = DesktopSecondary.copy(alpha = 0.6f)) },
+                singleLine = true,
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                FilterChip(
+                    selected = !isRegisterMode,
+                    onClick = { isRegisterMode = false; localError = null },
+                    label = { Text("Se connecter") },
+                    colors = desktopChipColors(),
+                )
+                FilterChip(
+                    selected = isRegisterMode,
+                    onClick = { isRegisterMode = true; localError = null },
+                    label = { Text("Créer un compte") },
+                    colors = desktopChipColors(),
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = username,
+                onValueChange = {
+                    username = it
+                    localError = null
+                },
+                label = { Text("Nom d'utilisateur") },
+                singleLine = true,
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    localError = null
+                },
+                label = { Text(if (isRegisterMode) "Mot de passe (6 caractères min)" else "Mot de passe") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            effectiveError?.let {
+                Spacer(Modifier.height(10.dp))
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = DesktopAccent,
-                    modifier = Modifier.padding(horizontal = 22.dp).padding(bottom = 8.dp),
+                    color = DesktopDestructive,
                 )
             }
-            when {
-                pasting -> {
-                    Text(
-                        DesktopStrings["d_paste_the_cookie_header_for_music_youtube_com", "Paste the Cookie header for music.youtube.com."],
-                        style = MaterialTheme.typography.bodySmall,
-                        color = DesktopSecondary,
-                        modifier = Modifier.padding(horizontal = 22.dp),
-                    )
-                    BasicTextField(
-                        value = pasted,
-                        onValueChange = { pasted = it },
-                        singleLine = false,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
-                        cursorBrush = SolidColor(DesktopAccent),
-                        modifier = Modifier
-                            .padding(horizontal = 22.dp, vertical = 10.dp)
-                            .fillMaxWidth()
-                            .heightIn(min = 84.dp, max = 160.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .padding(12.dp),
-                    )
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(onClick = { pasting = false }) { Text(DesktopStrings["back", "Back"], color = DesktopSecondary) }
-                        TextButton(
-                            onClick = { onPaste(pasted.trim()) },
-                            enabled = pasted.isNotBlank() && busy == null,
-                        ) {
-                            Text(DesktopStrings["sign_in", "Sign in"], color = DesktopAccent)
+
+            localSuccess?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = purpleAccent,
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    enabled = !effectiveBusy && serverUrl.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            localBusy = true
+                            localError = null
+                            localSuccess = null
+                            val res = PurpleMusicClient.probeServer(serverUrl)
+                            localBusy = false
+                            res.onSuccess { count ->
+                                withContext(Dispatchers.IO) {
+                                    DesktopAccounts.saveServerOnly(serverUrl)
+                                }
+                                localSuccess = "Serveur connecté ($count titres disponibles)."
+                                onPurpleSignedIn()
+                            }.onFailure { err ->
+                                localError = err.message ?: "Impossible de joindre ce serveur PurpleMusic."
+                            }
                         }
-                    }
-                }
-                profiles == null -> Row(
-                    Modifier.fillMaxWidth().padding(22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    },
                 ) {
-                    CircularProgressIndicator(color = DesktopAccent, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text(DesktopStrings["d_looking_for_browsers", "Looking for browsers…"], color = DesktopSecondary)
+                    Text("Utiliser l'URL sans compte", color = DesktopSecondary)
                 }
-                else -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    val found = profiles.orEmpty()
-                    if (webSignIn) {
-                        item(key = "web-sign-in") {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 62.dp)
-                                    .clickable(enabled = busy == null) { onWebSignIn() }
-                                    .padding(horizontal = 22.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Sign in with Google", color = Color.White)
-                                    Text(
-                                        if (busy == WEB_SIGN_IN) {
-                                            "Finish in the sign-in window, then choose \"Use this profile\""
-                                        } else {
-                                            "Opens Google's sign-in page in a Laya window"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = DesktopSecondary,
-                                    )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (effectiveBusy) {
+                        CircularProgressIndicator(
+                            color = purpleAccent,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Button(
+                        enabled = !effectiveBusy && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = purpleAccent,
+                            contentColor = Color.Black,
+                        ),
+                        onClick = {
+                            scope.launch {
+                                localBusy = true
+                                localError = null
+                                localSuccess = null
+                                val result = if (isRegisterMode) {
+                                    PurpleMusicClient.register(serverUrl, username, password, acceptTerms = true)
+                                } else {
+                                    PurpleMusicClient.login(serverUrl, username, password, autoAcceptTerms = true)
                                 }
-                                if (busy == WEB_SIGN_IN) {
-                                    CircularProgressIndicator(color = DesktopAccent, modifier = Modifier.size(14.dp))
+                                result.onSuccess { outcome ->
+                                    withContext(Dispatchers.IO) {
+                                        DesktopAccounts.savePurple(outcome.account)
+                                    }
+                                    localBusy = false
+                                    onPurpleSignedIn()
+                                }.onFailure { err ->
+                                    localBusy = false
+                                    localError = err.message ?: "Échec de la connexion à PurpleMusic."
                                 }
                             }
-                        }
-                    }
-                    if (found.isEmpty() && !webSignIn) {
-                        item {
-                            Text(
-                                DesktopStrings["d_no_browser_profile_was_found_on_this_machine", "No browser profile was found on this machine."],
-                                style = MaterialTheme.typography.bodySmall,
-                                color = DesktopSecondary,
-                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
-                    items(found.size, key = { found[it].database.toString() }) { index ->
-                        val profile = found[index]
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 52.dp)
-                                .clickable(enabled = busy == null) { onImport(profile) }
-                                .padding(horizontal = 22.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(profile.label, color = Color.White, modifier = Modifier.weight(1f))
-                            if (busy == profile.label) {
-                                CircularProgressIndicator(color = DesktopAccent, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 52.dp)
-                                .clickable { pasting = true }
-                                .padding(horizontal = 22.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Rounded.ContentPaste,
-                                null,
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Text(DesktopStrings["d_paste_a_cookie_instead", "Paste a cookie instead"], color = Color.White)
-                        }
+                        },
+                    ) {
+                        Text(
+                            if (isRegisterMode) "Créer le compte" else "Se connecter",
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
             }

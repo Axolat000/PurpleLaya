@@ -104,6 +104,32 @@ object LyricsRepository {
         /** Lets callers turn a cancelled race loser back into "not fetched". */
         onSourceCancelled: ((LyricsSource) -> Unit)? = null,
     ): Result? = coroutineScope {
+        // 1. Check PurpleMusic server's own cached/lrclib lyrics endpoint first!
+        runCatching {
+            val pmLyrics = com.music.laya.data.purplemusic.PurpleMusicClient.fetchLyrics(videoId)
+            if (pmLyrics != null && pmLyrics.found) {
+                val syncedLines = pmLyrics.synced?.let { raw ->
+                    EnhancedLrc.parse(raw).ifEmpty { LrcLib.parseLrc(raw) }
+                }.orEmpty()
+                if (syncedLines.isNotEmpty()) {
+                    val res = result(LyricsSource.LRCLIB, syncedLines)
+                    onSourceStarted?.invoke(LyricsSource.LRCLIB)
+                    onSourceResult?.invoke(LyricsSource.LRCLIB, res)
+                    return@coroutineScope res
+                }
+                val plainLines = pmLyrics.plain?.lineSequence()
+                    ?.map { LyricLine(0L, it.trim()) }
+                    ?.toList()
+                    ?.takeIf { it.any { line -> line.text.isNotEmpty() } }
+                if (plainLines != null && sources.isEmpty()) {
+                    val res = result(LyricsSource.LRCLIB, plainLines)
+                    onSourceStarted?.invoke(LyricsSource.LRCLIB)
+                    onSourceResult?.invoke(LyricsSource.LRCLIB, res)
+                    return@coroutineScope res
+                }
+            }
+        }
+
         val sequence = (order + LyricsSource.offered)
             .distinct()
             .filter { it in sources && !it.hidden }

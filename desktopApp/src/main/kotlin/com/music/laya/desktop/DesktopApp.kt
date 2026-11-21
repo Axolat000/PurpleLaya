@@ -812,6 +812,9 @@ fun LayaDesktopApp() {
         youtubeSignedIn = DesktopYouTubeAuth.isSignedIn
         sessionSettled = true
         sessionRevision++
+        if (!com.music.laya.data.purplemusic.PurpleMusicClient.hasServerConfigured) {
+            overlays.signIn = true
+        }
     }
     var audioQuality by remember { mutableStateOf(persistence.audioQuality()) }
     var sourceConfigs by remember { mutableStateOf(persistence.sourceConfigs()) }
@@ -4070,6 +4073,18 @@ fun LayaDesktopApp() {
                                 webSignInJob?.cancel()
                                 overlays.signIn = false
                                 signInError = null
+                            },
+                            onPurpleSignedIn = {
+                                scope.launch {
+                                    accounts = withContext(Dispatchers.IO) { DesktopAccounts.accounts() }
+                                    activeAccountId = DesktopAccounts.activeAccountId()
+                                    activeProfileId = DesktopAccounts.activeProfileId()
+                                    youtubeSignedIn = DesktopYouTubeAuth.isSignedIn
+                                    overlays.signIn = false
+                                    overlays.accounts = false
+                                    loadHome()
+                                    reloadLibrary()
+                                }
                             },
                         )
                     }

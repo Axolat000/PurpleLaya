@@ -175,6 +175,11 @@ class LayaApplication : Application(), SingletonImageLoader.Factory {
             CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
         }
         AppSettings.init(this, authStore)
+        if (com.music.laya.data.purplemusic.PurpleMusicClient.isSignedIn && authStore.cookie == null) {
+            val synCookie = com.music.laya.data.purplemusic.PurpleMusicClient.syntheticCookieFor()
+            authStore.cookie = synCookie
+            Innertube.cookie = synCookie
+        }
         // Falls back to the built-in signature server when a saved one is down.
         CoroutineScope(Dispatchers.IO).launch { com.music.laya.data.canvas.ArtistSignatureRepository.refreshServer() }
         // Before anything resolves a track: an addon with `checkValidLossless`

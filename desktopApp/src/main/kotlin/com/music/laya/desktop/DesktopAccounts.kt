@@ -3,6 +3,8 @@ package com.music.laya.desktop
 import com.music.laya.data.innertube.InnertubeParser
 import com.music.laya.data.model.Account
 import com.music.laya.data.model.AccountChannel
+import com.music.laya.data.purplemusic.PurpleAccount
+import com.music.laya.data.purplemusic.PurpleMusicClient
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -14,7 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 
-/** One Personal or Brand identity available under a Google login. */
+/** One Personal or Brand identity available under a login. */
 @Serializable
 data class DesktopYouTubeProfile(
     val profileId: String,
@@ -27,7 +29,7 @@ data class DesktopYouTubeProfile(
     val isBrandAccount: Boolean = false,
 )
 
-/** A Google login kept independently from every other captured login. */
+/** A login kept independently from every other saved login. */
 @Serializable
 data class DesktopGoogleAccount(
     val accountId: String,
@@ -36,16 +38,17 @@ data class DesktopGoogleAccount(
     val avatar: String? = null,
     val profiles: List<DesktopYouTubeProfile> = emptyList(),
     val activeProfileId: String? = null,
-    /** The browser profile this session was taken from, as the path of its cookie store. */
+    /** For PurpleMusic accounts, stores the normalized server URL. */
     val sourceProfile: String? = null,
 )
 
-/** Every Google login this app is holding, and which channel it is acting as. */
+/** Every PurpleMusic login this app is holding, and which server/account it is acting as. */
 internal object DesktopAccounts {
 
-    private const val KEY_ACCOUNTS = "google_accounts_v1"
-    private const val KEY_ACTIVE_ACCOUNT = "active_google_account_v1"
-    private const val KEY_ACTIVE_PROFILE = "active_google_profile_v1"
+    private const val KEY_ACCOUNTS = "purple_desktop_accounts_v1"
+    private const val KEY_ACTIVE_ACCOUNT = "active_purple_desktop_account_v1"
+    private const val KEY_ACTIVE_PROFILE = "active_purple_desktop_profile_v1"
+    private const val KEY_SERVER_URL = "purple_desktop_server_url_v1"
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val persistence get() = DesktopPersistence()
@@ -69,19 +72,47 @@ internal object DesktopAccounts {
             ?: account.profiles.firstOrNull()
     }
 
-    /** The identity for a stored account, or null when its cookie has gone. */
+    fun savedServerUrl(): String =
+        persistence.string(KEY_SERVER_URL).takeIf { it.isNotBlank() }
+            ?: active()?.sourceProfile.orEmpty()
+
+    fun saveServerOnly(serverUrl: String) {
+        val normalized = PurpleMusicClient.normalizeServerUrl(serverUrl)
+        persistence.saveString(KEY_SERVER_URL, normalized)
+        PurpleMusicClient.setServerUrl(normalized)
+    }
+
+    /** The identity for a stored account, or null when its credential has gone. */
     fun sessionFor(account: DesktopGoogleAccount, profile: DesktopYouTubeProfile?): DesktopYouTubeAuth.Session? {
-        val cookie = cookieOf(account.accountId) ?: return null
+        val rawSecret = cookieOf(account.accountId) ?: return null
+        val pmAccount = runCatching { json.decodeFromString(PurpleAccount.serializer(), rawSecret) }.getOrNull()
+        val cookie = if (pmAccount != null) {
+            PurpleMusicClient.adoptSession(
+                serverUrl = pmAccount.serverUrl,
+                username = pmAccount.username,
+                password = pmAccount.password,
+                userId = pmAccount.userId,
+                isAdmin = pmAccount.isAdmin,
+            )
+            persistence.saveString(KEY_SERVER_URL, pmAccount.serverUrl)
+            PurpleMusicClient.syntheticCookieFor(pmAccount) ?: "SAPISID=purplemusic"
+        } else {
+            rawSecret
+        }
         return DesktopYouTubeAuth.Session(
             cookie = cookie,
             authUser = profile?.authUser ?: "0",
             pageId = profile?.pageId,
-            dataSyncId = profile?.dataSyncId,
+            dataSyncId = profile?.dataSyncId ?: account.accountId,
         )
     }
 
-    /** Puts the chosen account into force, renewing it first if it has gone flat. */
+    /** Puts the chosen PurpleMusic account (or standalone server URL) into force. */
     suspend fun activate(): DesktopYouTubeAuth.Session? {
+        val standaloneUrl = savedServerUrl()
+        if (standaloneUrl.isNotBlank() && !PurpleMusicClient.hasServerConfigured) {
+            PurpleMusicClient.setServerUrl(standaloneUrl)
+        }
         val account = active() ?: run {
             DesktopYouTubeAuth.adopt(null)
             return null
@@ -93,123 +124,8 @@ internal object DesktopAccounts {
             DesktopYouTubeAuth.adopt(null)
             return null
         }
-        DesktopYouTubeSession.adoptSessionScope(stored.cookie)?.let { live ->
-            val session = healedIdentity(account, profile, stored, live)
-            DesktopYouTubeAuth.adopt(session)
-            return session
-        }
-
-        DesktopTrackLog.log("the stored session has expired; looking for a fresh one in the browser it came from")
-        val renewed = renewFromBrowser(account)
-        if (renewed == null) {
-            // Anonymous rather than broken.
-            DesktopTrackLog.log("could not renew the session; browsing as a guest until it is signed in again")
-            DesktopYouTubeAuth.adopt(null)
-        }
-        return renewed
-    }
-
-    /**
-     * The live shell's own answer about who this cookie acts as, unless the
-     * listener deliberately picked a brand channel.
-     *
-     * What activate() used to do was adopt [stored] — the identity captured
-     * when the login was saved — even though it had just gone and read [live],
-     * the same question answered by the shell *now*. Google rotates an
-     * account's `dataSyncId`, so a stored personal identity can silently go
-     * stale; sending it as `onBehalfOfUser` is answered 400 INVALID_ARGUMENT
-     * on every browse and next from then on, and this app's own log caught the
-     * mismatch and still kept the stale side ("server shell identity differs
-     * from selected profile; retaining override"). The feed 400s, radio and
-     * history die, and only luck (a run that installed no override) says the
-     * account is fine.
-     *
-     * For the account's own channel there is nothing to preserve: the shell's
-     * fresh pair *is* the identity, so it is adopted, written back over the
-     * stored profile, and used. A brand channel is different — there the
-     * stored pair is the whole point of the override (the shell offers the
-     * account's default, not the channel the listener chose), so it stands.
-     * Android's equivalent guard is `loadChannels`, which re-detects profiles
-     * and refreshes ids on every account load.
-     */
-    private fun healedIdentity(
-        account: DesktopGoogleAccount,
-        profile: DesktopYouTubeProfile?,
-        stored: DesktopYouTubeAuth.Session,
-        live: DesktopYouTubeAuth.Session,
-    ): DesktopYouTubeAuth.Session {
-        // No stored profile at all, or the listener did not pick a brand one:
-        // the shell's answer wins, and the stored record learns from it.
-        val brand = profile?.pageId?.takeIf { it.isNotBlank() }
-        if (brand == null) {
-            val changed = stored.dataSyncId != live.dataSyncId ||
-                stored.authUser != live.authUser
-            if (changed) {
-                val fresh = profile?.copy(
-                    dataSyncId = live.dataSyncId,
-                    authUser = live.authUser,
-                ) ?: DesktopYouTubeProfile(
-                    profileId = live.dataSyncId ?: account.accountId,
-                    name = account.name.ifBlank { "YouTube Music" },
-                    handle = account.email,
-                    avatar = account.avatar,
-                    pageId = null,
-                    dataSyncId = live.dataSyncId,
-                    authUser = live.authUser,
-                    isBrandAccount = false,
-                )
-                write(
-                    accounts().map {
-                        if (it.accountId == account.accountId) {
-                            it.copy(
-                                profiles = it.profiles.map { existing ->
-                                    if (existing.profileId == fresh.profileId) fresh else existing
-                                },
-                                activeProfileId = fresh.profileId,
-                            )
-                        } else {
-                            it
-                        }
-                    },
-                )
-                DesktopTrackLog.log(
-                    "adopted the shell's fresh channel identity" +
-                        if (stored.dataSyncId != live.dataSyncId) " (the stored one had gone stale)" else "",
-                )
-            }
-            return live
-        }
-        // Brand channel: keep what the listener picked, but take the live
-        // session's fresh cookie context for everything else.
+        DesktopYouTubeAuth.adopt(stored)
         return stored
-    }
-
-    /** Reads the source browser's cookies again and saves them if they are live. */
-    private suspend fun renewFromBrowser(account: DesktopGoogleAccount): DesktopYouTubeAuth.Session? {
-        val candidates = DesktopBrowserCookies.profiles()
-        // The one it came from first, then any other holding a live session for the *same account*
-        // — matched on the id the shell reports, not on the path.
-        val ordered = candidates.sortedByDescending { it.database.toString() == account.sourceProfile }
-        for (profile in ordered) {
-            val jar = (DesktopBrowserCookies.read(profile) as? DesktopBrowserCookies.Result.Session)?.cookie
-                ?: continue
-            val scope = DesktopYouTubeSession.adoptSessionScope(jar) ?: continue
-            val belongs = scope.dataSyncId == account.accountId ||
-                (account.sourceProfile != null && profile.database.toString() == account.sourceProfile)
-            if (!belongs) continue
-            DesktopYouTubeAuth.adopt(scope)
-            writeCookie(account.accountId, jar)
-            rememberSource(account, profile.database.toString())
-            DesktopTrackLog.log("renewed the session from ${profile.label}")
-            return scope
-        }
-        return null
-    }
-
-    /** Notes where a renewal came from, so the next one starts there. */
-    private fun rememberSource(account: DesktopGoogleAccount, source: String) {
-        if (account.sourceProfile == source) return
-        write(accounts().map { if (it.accountId == account.accountId) it.copy(sourceProfile = source) else it })
     }
 
     /** Puts the chosen account and channel into force for this process. */
@@ -221,13 +137,39 @@ internal object DesktopAccounts {
         }
         val session = sessionFor(account, activeProfile())
         DesktopYouTubeAuth.adopt(session)
-        if (session == null) {
-            DesktopTrackLog.log("account '${account.email.ifBlank { account.name }}' has no stored credential any more")
-        }
         return session
     }
 
-    /** Saves a captured login and makes it the active one. */
+    /** Saves a PurpleMusic account and makes it the active one. */
+    fun savePurple(pmAccount: PurpleAccount): DesktopGoogleAccount {
+        persistence.saveString(KEY_SERVER_URL, pmAccount.serverUrl)
+        val profile = DesktopYouTubeProfile(
+            profileId = pmAccount.accountId,
+            name = pmAccount.username,
+            handle = pmAccount.displayHost,
+            avatar = null,
+            pageId = null,
+            dataSyncId = pmAccount.accountId,
+            authUser = "0",
+            isBrandAccount = pmAccount.isAdmin,
+        )
+        val account = DesktopGoogleAccount(
+            accountId = pmAccount.accountId,
+            name = pmAccount.username,
+            email = pmAccount.displayHost,
+            avatar = null,
+            profiles = listOf(profile),
+            activeProfileId = profile.profileId,
+            sourceProfile = pmAccount.serverUrl,
+        )
+        val encodedSecret = json.encodeToString(PurpleAccount.serializer(), pmAccount)
+        writeCookie(pmAccount.accountId, encodedSecret)
+        write(accounts().filterNot { it.accountId == pmAccount.accountId } + account)
+        select(pmAccount.accountId, profile.profileId)
+        return account
+    }
+
+    /** Legacy signature kept for callers in DesktopApp. */
     fun save(
         cookie: String,
         scope: DesktopYouTubeAuth.Session,
@@ -248,12 +190,10 @@ internal object DesktopAccounts {
                 isBrandAccount = channel.pageId != null,
             )
         }.ifEmpty {
-            // No switcher answer is not the same as no channels: every login has at least the one
-            // the shell is already acting as.
             listOf(
                 DesktopYouTubeProfile(
                     profileId = scope.pageId ?: scope.dataSyncId ?: accountId,
-                    name = details?.name?.ifBlank { null } ?: "YouTube Music",
+                    name = details?.name?.ifBlank { null } ?: "PurpleMusic",
                     handle = details?.email.orEmpty(),
                     avatar = details?.thumbnailUrl,
                     pageId = scope.pageId,
@@ -263,9 +203,7 @@ internal object DesktopAccounts {
                 ),
             )
         }
-        val chosen = profiles.firstOrNull { it.pageId != null && it.pageId == scope.pageId }
-            ?: profiles.firstOrNull { it.dataSyncId != null && it.dataSyncId == scope.dataSyncId }
-            ?: profiles.first()
+        val chosen = profiles.first()
         val account = DesktopGoogleAccount(
             accountId = accountId,
             name = details?.name.orEmpty(),
@@ -273,7 +211,7 @@ internal object DesktopAccounts {
             avatar = details?.thumbnailUrl,
             profiles = profiles,
             activeProfileId = chosen.profileId,
-            sourceProfile = sourceProfile ?: accounts().firstOrNull { it.accountId == accountId }?.sourceProfile,
+            sourceProfile = sourceProfile,
         )
         writeCookie(accountId, cookie)
         write(accounts().filterNot { it.accountId == accountId } + account)
@@ -290,6 +228,7 @@ internal object DesktopAccounts {
     fun remove(accountId: String) {
         DesktopSecretStore.remove(attributesFor(accountId))
         persistence.saveString(cookieFallbackKey(accountId), "")
+        PurpleMusicClient.removeAccount(accountId)
         val remaining = accounts().filterNot { it.accountId == accountId }
         write(remaining)
         val next = remaining.firstOrNull()
@@ -299,25 +238,25 @@ internal object DesktopAccounts {
     }
 
     private fun write(value: List<DesktopGoogleAccount>) {
-        DesktopPreferenceChunks.write(persistence.preferences, KEY_ACCOUNTS, json.encodeToString(kotlinx.serialization.builtins.ListSerializer(DesktopGoogleAccount.serializer()), value))
+        DesktopPreferenceChunks.write(
+            persistence.preferences,
+            KEY_ACCOUNTS,
+            json.encodeToString(kotlinx.serialization.builtins.ListSerializer(DesktopGoogleAccount.serializer()), value),
+        )
     }
 
-    // ---- Where the credential itself lives ---------------------------------
-
     private fun attributesFor(accountId: String) =
-        mapOf("application" to "laya", "account" to accountId)
+        mapOf("application" to "purplelaya", "account" to accountId)
 
-    /** The keyring first, and a preference only when there is no keyring. */
     private fun writeCookie(accountId: String, cookie: String) {
         val stored = DesktopSecretStore.store(
-            label = DesktopStrings["d_laya_youtube_music_session", "Laya — YouTube Music session"],
+            label = "PurpleLaya — PurpleMusic session",
             attributes = attributesFor(accountId),
             secret = cookie.toByteArray(Charsets.UTF_8),
         )
         if (stored) {
             persistence.saveString(cookieFallbackKey(accountId), "")
         } else {
-            DesktopTrackLog.log("no keyring available; keeping the session in preferences instead")
             DesktopPreferenceChunks.write(persistence.preferences, cookieFallbackKey(accountId), cookie)
         }
     }
@@ -327,17 +266,14 @@ internal object DesktopAccounts {
             ?: DesktopPreferenceChunks.read(persistence.preferences, cookieFallbackKey(accountId))
                 ?.takeIf { it.isNotBlank() }
 
-    private fun cookieFallbackKey(accountId: String) = "google_cookie_$accountId"
+    private fun cookieFallbackKey(accountId: String) = "purple_secret_$accountId"
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
 }
 
-/** Reads the account renderers out of YouTube Music's own account endpoints. */
 internal object DesktopAccountParser {
-
-    /** Name, email and photo, from the header the account menu opens with. */
     fun account(root: JsonElement): Account? {
         val header = DesktopSearchClient.renderers(root, "activeAccountHeaderRenderer").firstOrNull() ?: return null
         val email = header.text("email").ifBlank { header.text("channelHandle") }
@@ -348,12 +284,9 @@ internal object DesktopAccountParser {
         )
     }
 
-    /** The channels a switcher response offers, in the order YouTube lists them. */
     fun channels(root: JsonElement): List<AccountChannel> =
         DesktopSearchClient.renderers(root, "accountItem").mapNotNull { item ->
             val pageId = item.findString("pageId")
-            // `<accountSyncId>||<sessionSyncId>`; only the first half names the account, exactly as
-            // in the shell's own DATASYNC_ID.
             val dataSyncId = item.findString("datasyncIdToken")?.substringBefore("||")?.takeIf { it.isNotBlank() }
             if (pageId == null && dataSyncId == null) return@mapNotNull null
             val subtitle = item.text("channelHandle").ifBlank { item.text("accountByline") }
@@ -367,7 +300,6 @@ internal object DesktopAccountParser {
             )
         }.distinctBy { it.key }
 
-    /** A renderer's `runs`/`simpleText` field, whichever it used. */
     private fun JsonObject.text(field: String): String {
         val node = this[field] as? JsonObject ?: return ""
         (node["runs"] as? JsonArray)?.let { runs ->
@@ -376,12 +308,10 @@ internal object DesktopAccountParser {
         return node["simpleText"]?.jsonPrimitive?.contentOrNull.orEmpty()
     }
 
-    /** The largest thumbnail the account photo offers. */
     private fun JsonObject.photo(): String? =
         ((this["accountPhoto"] as? JsonObject)?.get("thumbnails") as? JsonArray)
             ?.lastOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
 
-    /** The first value of [key] anywhere inside, whatever it is wrapped in. */
     private fun JsonElement.findString(key: String): String? = when (this) {
         is JsonObject -> (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: values.firstNotNullOfOrNull { it.findString(key) }

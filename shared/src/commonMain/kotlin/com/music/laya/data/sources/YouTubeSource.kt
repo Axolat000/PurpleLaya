@@ -69,6 +69,16 @@ class YouTubeSource(
      */
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         val url = StreamResolver.resolve(trackId)
-        return SourceStream(url = url, format = StreamFormat(codec = "opus"))
+        val track = com.music.laya.data.purplemusic.PurpleMusicClient.cachedTrack(trackId)
+        val isLossless = track?.isLossless == true
+        val codec = track?.mimeType?.substringAfterLast('/') ?: "mp3"
+        return SourceStream(
+            url = url,
+            format = StreamFormat(
+                codec = codec,
+                kbps = if (isLossless) 1411 else 320,
+            ),
+            headers = StreamResolver.mediaHeadersFor(url),
+        )
     }
 }

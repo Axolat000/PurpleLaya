@@ -148,7 +148,7 @@ object DesktopSearchClient {
 
     internal fun isVideoId(id: String): Boolean = VIDEO_ID.matches(id)
 
-    private val VIDEO_ID = Regex("""[A-Za-z0-9_-]{11}""")
+    private val VIDEO_ID = Regex("""\d+|[A-Za-z0-9_-]{11}""")
 
     /** Every object named [name] anywhere under [root], depth first. */
     internal fun renderers(root: JsonElement, name: String): List<JsonObject> = buildList {

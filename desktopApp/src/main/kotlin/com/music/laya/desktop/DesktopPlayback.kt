@@ -198,18 +198,19 @@ internal object DesktopStreamClient {
                 ceiling.remove()
             }
         }
-        DesktopTrackLog.log("  youtube: resolved '${song.title}' through InnerTubeX")
+        val track = com.music.laya.data.purplemusic.PurpleMusicClient.cachedTrack(song.videoId)
+        val codec = track?.mimeType?.substringAfterLast('/') ?: mimeOf(url) ?: "mp3"
+        val kbps = if (track?.isLossless == true) 1411 else 320
+        DesktopTrackLog.log("  purplemusic: resolved '${song.title}' -> $url ($codec)")
         DesktopStream(
             url = url,
             format = DesktopStreamFormat(
-                codec = mimeOf(url),
-                kbps = NerdStats.pickedBitrateKbps(song.videoId),
+                codec = codec,
+                kbps = kbps,
             ),
             headers = StreamResolver.mediaHeadersFor(url),
             sourceId = "youtube",
-            // Google's media servers answer 403 to a request for a whole file and 206 to one for
-            // a window of it, and FFmpeg's own HTTP client asks for the whole thing.
-            windowedReads = true,
+            windowedReads = false,
         )
     }
 

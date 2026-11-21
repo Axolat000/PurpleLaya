@@ -167,12 +167,11 @@ enum class SourceKind(
      * radio station or a related-tracks queue.
      */
     YOUTUBE(
-        label = "YouTube Music",
-        detail = "The full catalogue, at Opus up to about 171 kbps. Lossy — there is no " +
-            "lossless rendition to ask for.",
-        labels = listOf("Lossy", "Full catalogue", "Radio"),
+        label = "PurpleMusic",
+        detail = "Votre serveur PurpleMusic auto-hébergé (MP3, FLAC, WAV, OGG).",
+        labels = listOf("Self-Hosted", "FLAC", "Catalogue complet"),
         needsServer = false,
-        canServeLossless = false,
+        canServeLossless = true,
         rank = 3,
     ),
     ;
