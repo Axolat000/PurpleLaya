@@ -149,7 +149,7 @@ class DiscordRPC(
         context.getString(R.string.app_name).removeSuffix(" Dev")
 
     companion object {
-        const val PROJECT_URL = "https://github.com/impin2rex/Laya"
+        const val PROJECT_URL = "https://github.com/Axolat000/PurpleLaya"
 
         const val DEFAULT_BUTTON_1 = "Listen on YouTube Music"
         const val DEFAULT_BUTTON_2 = "Visit Laya"

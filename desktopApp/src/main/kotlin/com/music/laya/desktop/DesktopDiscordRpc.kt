@@ -361,7 +361,7 @@ internal object DesktopDiscordRpc {
 
     /** How long a scan that found no local Discord holds off the next one. */
     private const val PROBE_BACKOFF_MS = 10_000L
-    private const val PROJECT_URL = "https://github.com/impin2rex/Laya"
+    private const val PROJECT_URL = "https://github.com/Axolat000/PurpleLaya"
     private const val ART_PX = 480
     private const val CLIENT_VERSION = "0.0.83"
     private const val CLIENT_BUILD = "352675"

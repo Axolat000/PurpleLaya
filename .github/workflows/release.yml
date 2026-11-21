@@ -16,80 +16,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  linux:
-    name: Linux · AppImage, deb, rpm
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Work out the version
-        id: version
-        run: |
-          version="${{ inputs.version }}"
-          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-          echo "Building $version"
-
-      - name: Write local.properties
-        run: |
-          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
-          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-          echo "LOSSLESS_USER_AGENT=${{ vars.LOSSLESS_USER_AGENT }}" >> local.properties
-          echo "LISTEN_TOGETHER_SERVER=${{ secrets.LISTEN_TOGETHER_SERVER }}" >> local.properties
-          echo "SIGNATURE_API_URL=${{ secrets.SIGNATURE_API_URL }}" >> local.properties
-
-      - name: Packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm fakeroot binutils file
-          curl -sSL -o appimagetool.AppImage \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool.AppImage
-
-      - run: chmod +x gradlew
-
-      - name: Tests
-        run: ./gradlew :shared:jvmTest :desktopUi:jvmTest :desktopApp:test -Playa.version=${{ steps.version.outputs.value }}
-
-      - name: Build deb, rpm and the app image
-        run: |
-          ./gradlew :desktopApp:packageDeb :desktopApp:packageRpm :desktopApp:createDistributable \
-            -Playa.version=${{ steps.version.outputs.value }}
-
-      - name: The analyser and models are in the jar
-        run: |
-          jar=$(ls desktopApp/build/compose/binaries/main/app/*/lib/app/desktopApp*.jar)
-          jar tf "$jar" | grep -q 'native/liblaya_analysis.so'
-          jar tf "$jar" | grep -q 'models/.*\.onnx'
-
-      - name: Build the AppImage
-        run: |
-          desktopApp/packaging/appimage.sh \
-            desktopApp/build/compose/binaries/main/app/PurpleLaya \
-            dist/PurpleLaya-${{ steps.version.outputs.value }}-linux-x86_64.AppImage \
-            "$PWD/appimagetool.AppImage"
-
-      - name: Collect
-        run: |
-          v=${{ steps.version.outputs.value }}
-          mkdir -p dist
-          cp desktopApp/build/compose/binaries/main/deb/*.deb "dist/PurpleLaya-$v-linux-amd64.deb"
-          cp desktopApp/build/compose/binaries/main/rpm/*.rpm "dist/PurpleLaya-$v-linux-x86_64.rpm"
-          ls -lh dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-artifacts
-          path: dist/*
-
   windows:
     name: Windows · installer, msi, portable
     runs-on: windows-latest
@@ -166,77 +92,6 @@ jobs:
           name: windows-artifacts
           path: dist/*
 
-  macos:
-    name: macOS · dmg, pkg, zip (${{ matrix.arch }})
-    strategy:
-      matrix:
-        include:
-          - os: macos-15
-            arch: arm64
-          - os: macos-15-intel
-            arch: x64
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Work out the version
-        id: version
-        run: |
-          version="${{ inputs.version }}"
-          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-          echo "Building $version"
-
-      - name: Write local.properties
-        run: |
-          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
-          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-          echo "LOSSLESS_USER_AGENT=${{ vars.LOSSLESS_USER_AGENT }}" >> local.properties
-          echo "LISTEN_TOGETHER_SERVER=${{ secrets.LISTEN_TOGETHER_SERVER }}" >> local.properties
-          echo "SIGNATURE_API_URL=${{ secrets.SIGNATURE_API_URL }}" >> local.properties
-
-      - run: chmod +x gradlew
-
-      - name: Tests
-        run: ./gradlew :shared:jvmTest :desktopUi:jvmTest :desktopApp:test -Playa.version=${{ steps.version.outputs.value }}
-
-      - name: Build DMG, PKG and the app bundle
-        run: |
-          ./gradlew :desktopApp:packageDmg :desktopApp:packagePkg :desktopApp:createDistributable \
-            -Playa.version=${{ steps.version.outputs.value }}
-
-      - name: The analyser and models are in the jar
-        run: |
-          jar=$(ls desktopApp/build/compose/binaries/main/app/*.app/Contents/app/desktopApp*.jar)
-          jar tf "$jar" | grep -q 'models/.*\.onnx'
-
-      - name: Collect
-        run: |
-          v="${{ steps.version.outputs.value }}"
-          arch="${{ matrix.arch }}"
-          mkdir -p dist
-          for f in desktopApp/build/compose/binaries/main/dmg/*.dmg; do
-            [ -f "$f" ] && cp "$f" "dist/PurpleLaya-$v-macos-$arch.dmg"
-          done
-          for f in desktopApp/build/compose/binaries/main/pkg/*.pkg; do
-            [ -f "$f" ] && cp "$f" "dist/PurpleLaya-$v-macos-$arch.pkg"
-          done
-          ditto -c -k --keepParent desktopApp/build/compose/binaries/main/app/PurpleLaya.app "dist/PurpleLaya-$v-macos-$arch.zip"
-          ls -lh dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-${{ matrix.arch }}-artifacts
-          path: dist/*
-
   android:
     name: Android · phone, TV, Wear OS
     runs-on: ubuntu-latest
@@ -267,15 +122,37 @@ jobs:
 
       # The phone, TV and watch apps all sign with the one release key: the watch
       # app only pairs with a phone app signed by the same key.
+      # When KEYSTORE_BASE64 is not configured in GitHub Secrets, generate a self-signed
+      # release keystore on the fly so every APK is installable on Android devices.
       - name: Signing keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > laya-release.jks
-          {
-            echo "storeFile=laya-release.jks"
-            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
-            echo "keyAlias=${{ secrets.KEY_ALIAS }}"
-            echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
-          } > keystore.properties
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > laya-release.jks
+            {
+              echo "storeFile=laya-release.jks"
+              echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+              echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+              echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            } > keystore.properties
+          else
+            keytool -genkeypair \
+              -v \
+              -keystore laya-release.jks \
+              -storetype PKCS12 \
+              -alias purplelaya \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass purplelaya123 \
+              -keypass purplelaya123 \
+              -dname "CN=PurpleLaya, OU=Axolat000, O=PurpleMusic, L=Paris, ST=IDF, C=FR"
+            {
+              echo "storeFile=laya-release.jks"
+              echo "storePassword=purplelaya123"
+              echo "keyAlias=purplelaya"
+              echo "keyPassword=purplelaya123"
+            } > keystore.properties
+          fi
 
       - run: chmod +x gradlew
 
@@ -303,99 +180,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  ios:
-    name: iOS · unsigned IPA
-    # Xcode 26+: the alternate app icons are Icon Composer (.icon) documents, which Xcode 16 silently leaves out.
-    runs-on: macos-26
-    timeout-minutes: 150
-    env:
-      # Runner has an Android SDK; point at nothing so settings.gradle.kts only configures KMP modules.
-      ANDROID_HOME: /nonexistent
-      ANDROID_SDK_ROOT: /nonexistent
-      SIGNATURE_API_URL: ${{ secrets.SIGNATURE_API_URL }}
-      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-      LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-      LOSSLESS_USER_AGENT: ${{ vars.LOSSLESS_USER_AGENT }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Work out the version
-        id: version
-        run: |
-          version="${{ inputs.version }}"
-          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-          echo "Building $version"
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: gradle
-
-      - name: Cache Kotlin/Native toolchain
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts') }}
-
-      - run: chmod +x gradlew
-
-      - name: Generate Xcode project
-        run: |
-          xcodebuild -version
-          brew install xcodegen
-          cd iosApp && xcodegen generate
-
-      - name: Build app (unsigned)
-        run: |
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/dd \
-            MARKETING_VERSION=${{ steps.version.outputs.value }} \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-
-      # installd rejects a bundle with no signature; Sideloadly/AltStore re-sign it.
-      - name: Ad-hoc sign
-        run: |
-          APP=build/dd/Build/Products/Release-iphoneos/Laya.app
-          find "$APP" -type d -empty -delete
-          # Embedded frameworks (ONNX Runtime, Google Cast) are signed before the bundle that contains them.
-          for f in "$APP"/Frameworks/*.framework; do [ -e "$f" ] && codesign --force --sign - --timestamp=none "$f"; done
-          # The widgets extension, then the app, with the App Group they share: an unsigned build carries no
-          # entitlements, and a re-signing sideloader only sets up the groups it finds here.
-          codesign --force --sign - --timestamp=none --generate-entitlement-der \
-            --entitlements iosApp/LayaWidgets/LayaWidgets.entitlements "$APP/PlugIns/LayaWidgets.appex"
-          codesign --force --sign - --timestamp=none --generate-entitlement-der \
-            --entitlements iosApp/iosApp/iosApp.entitlements "$APP"
-          codesign --verify --strict --verbose=2 "$APP"
-          # The Settings icon picker needs these; an older Xcode drops them without an error.
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundleAlternateIcons" "$APP/Info.plist" \
-            || { echo "::error::No alternate app icons in the build; the icon picker would do nothing"; exit 1; }
-
-      - name: Package .ipa
-        run: |
-          mkdir -p dist build/ipa/Payload
-          cp -R build/dd/Build/Products/Release-iphoneos/Laya.app build/ipa/Payload/
-          cd build/ipa && zip -qry "../../dist/Laya-${{ steps.version.outputs.value }}-ios.ipa" Payload
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios-artifacts
-          path: dist/*
-          if-no-files-found: error
-
   release:
     name: Publish
-    needs: [linux, windows, macos, android, ios]
+    needs: [windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -413,13 +200,13 @@ jobs:
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Draft the release
-        if: github.ref_type == 'tag'
+      - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Laya ${{ github.ref_name }}
-          draft: true
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          name: PurpleLaya ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          draft: false
+          generate_release_notes: true
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -68,7 +68,7 @@ jobs:
     - name: The analyser and models are in the jar
       shell: bash
       run: |
-        jar=$(ls desktopApp/build/compose/binaries/main/app/Laya/app/desktopApp*.jar)
+        jar=$(ls desktopApp/build/compose/binaries/main/app/*/app/desktopApp*.jar)
         jar tf "$jar" | grep -q 'native/laya_analysis.dll'
         jar tf "$jar" | grep -q 'models/.*\.onnx'
         jar tf "$jar" | grep -q 'native/laya_smtc.dll'
@@ -79,7 +79,7 @@ jobs:
       run: |
         $v = "${{ steps.version.outputs.value }}"
         New-Item -ItemType Directory -Force dist | Out-Null
-        Copy-Item desktopApp/build/compose/binaries/main/exe/*.exe "dist/Laya-$v-windows-x64-setup.exe"
+        Copy-Item desktopApp/build/compose/binaries/main/exe/*.exe "dist/PurpleLaya-$v-windows-x64-setup.exe"
         Get-ChildItem dist | Format-Table Name, Length
 
     - name: Upload EXE Artifact

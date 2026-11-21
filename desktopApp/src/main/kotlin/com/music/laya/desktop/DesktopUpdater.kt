@@ -64,7 +64,9 @@ internal object DesktopUpdater {
         when {
             DesktopPlatform.isWindows -> {
                 // <install>\runtime is the bundled JRE; the launcher sits beside it.
-                val exe = launcher ?: javaHome.parentFile?.parentFile?.resolve("Laya.exe")
+                val exe = launcher
+                    ?: javaHome.parentFile?.parentFile?.resolve("PurpleLaya.exe")?.takeIf { it.isFile }
+                    ?: javaHome.parentFile?.parentFile?.resolve("Laya.exe")
                 exe?.takeIf { it.isFile }?.let(Target::Windows)
             }
             DesktopPlatform.isMac -> {
